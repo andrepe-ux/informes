@@ -21,9 +21,9 @@
 #mainContent {
     min-width: 0; 
 }
-/* Aumenta a altura máxima do canvas para os gráficos ficarem maiores (opcional) */
+/* AJUSTE PARA VISIBILIDADE DO GRÁFICO (Alterado de 500px para 700px) */
 .chart-container canvas {
-    max-height: 500px; 
+    max-height: 700px;  
 }
 
 /* Estilo para a barra de rolagem da sidebar (opcional) */
@@ -58,7 +58,7 @@
         </div>
 
         <div class="mb-5">
-            <label class="block font-semibold mb-0.5 text-xs text-gray-700">TEXTO LIVRE:</label>
+            <label class="block font-semibold mb-0.5 text-xs text-gray-700">TEXTO LIBRE (INICIAL):</label>
             <textarea id="textoLibre" rows="3" class="w-full p-1 border border-gray-300 rounded-md text-xs focus:ring-purple-500 focus:border-purple-500 transition duration-150" placeholder="Escriba aquí su texto libre..."></textarea>
         </div>
 
@@ -278,7 +278,7 @@ async function exportToWord(){
         children.push(new Paragraph({children:[new TextRun({text:"FECHA:   ",font:"Arial",size:32}),new TextRun({text:fechaStr,bold:true,font:"Arial",size:32})]}));
         children.push(new Paragraph({children:[new TextRun({text:"__________________________________________________________________________________________"})],spacing:{after:200}}));
 
-        // Adicionar o Texto Livre
+        // Adicionar o Texto Livre INICIAL
         if(textoLibreVal.trim()!==""){
             children.push(new Paragraph({spacing:{before:200}}));
             children.push(new Paragraph({children:[new TextRun({text:"COMENTARIOS INICIALES:",bold:true,font:"Arial",size:36})]}));
@@ -293,6 +293,10 @@ async function exportToWord(){
             
             const titleEl=card.querySelector("h3"); 
             const canvas=card.querySelector("canvas");
+            // NOVO: Capturar o texto livre do gráfico
+            const commentEl = card.querySelector(".chart-comment");
+            const chartCommentVal = (commentEl ? commentEl.value : "") || "";
+
             if(!canvas) continue;
 
             // 1. Título
@@ -327,8 +331,15 @@ async function exportToWord(){
             }
             children.push(new Paragraph({children:[new TextRun({text:legendText,italics:true,font:"Arial",size:32})]}));
             children.push(new Paragraph(""));
-            
-            // 4. Tabela de Totais (se existir - apenas para o gráfico CC.AA. percentual - ID: afiliacion_comunidad)
+
+            // 4. NOVO: Comentário do Gráfico
+            if(chartCommentVal.trim()!==""){
+                children.push(new Paragraph({children:[new TextRun({text:"Comentarios del Gráfico:",bold:true,font:"Arial",size:32})]}));
+                children.push(new Paragraph({children:[new TextRun({text:chartCommentVal,font:"Arial",size:32})]}));
+                children.push(new Paragraph({spacing:{after:200}}));
+            }
+
+            // 5. Tabela de Totais (se existir - apenas para o gráfico CC.AA. percentual - ID: afiliacion_comunidad)
             const totalTableData = JSON.parse(card.dataset.totaldata || 'null');
             // Verifica se o ID corresponde à lógica original do total: "afiliacion_comunidad" (percentual)
             const isCCAAChartPercent = id.includes("afiliacion_comunidad") && !id.includes("unitarios"); 
@@ -361,6 +372,8 @@ async function exportToWord(){
                 }));
                 children.push(new Paragraph({spacing:{after:400}}));
             }
+            // Espaçamento final
+            children.push(new Paragraph({spacing:{after:400}})); 
         }
 
         children.push(new Paragraph({children:[new TextRun({text:"Siempre que se justifique los datos serán revisados y actualizados",italics:true,font:"Arial",size:28})]}));
@@ -471,6 +484,15 @@ function createChartComponent(parentElement, title, id, labels, datasets, needsC
     if(isCCAAChartPercent && totalDatasets.length > 0) {
         chartContainer.appendChild(totalTableDiv);
     }
+
+    // NOVO: Caixa de Texto Livre por Gráfico
+    const commentDiv = document.createElement("div");
+    commentDiv.className = "mt-6 p-4 border border-gray-300 bg-gray-50 rounded-lg";
+    commentDiv.innerHTML = `
+        <label for="comment-${id}" class="block font-semibold mb-2 text-sm text-gray-700">Comentario específico para este Gráfico:</label>
+        <textarea id="comment-${id}" rows="3" class="chart-comment w-full p-2 border border-gray-400 rounded-md text-sm focus:ring-purple-500 focus:border-purple-500 transition duration-150" placeholder="Escriba aquí sus conclusiones o análisis sobre este gráfico..."></textarea>
+    `;
+    chartContainer.appendChild(commentDiv);
     
     parentElement.appendChild(chartContainer);
 
@@ -558,9 +580,15 @@ function createChartComponent(parentElement, title, id, labels, datasets, needsC
             options: {
                 responsive: true,
                 maintainAspectRatio: true, 
+                // AJUSTE PARA VISIBILIDADE: Adiciona padding no topo
+                layout: {
+                    padding: {
+                        top: 30 
+                    }
+                },
                 plugins: {
                     legend: { 
-                        position: "bottom" // <--- ALTERAÇÃO AQUI
+                        position: "bottom" 
                     },
                     datalabels: {
                         anchor: "end",

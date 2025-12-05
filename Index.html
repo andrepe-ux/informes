@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>INFORMES</title>
+<script src="https://cdn.tailwindcss.com"></script> 
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.2.2/build/index.umd.js"></script>
+<style>
+/* Estilos ajustados para la sidebar y el contenido principal */
+#sidebar {
+    width: 250px; /* Ancho reducido de la sidebar */
+    flex-shrink: 0; 
+    max-height: calc(100vh - 48px); 
+    overflow-y: auto; 
+    position: sticky; 
+    top: 1.5rem; 
+}
+#mainContent {
+    min-width: 0; 
+}
+/* AJUSTE PARA VISIBILIDAD DEL GRÁFICO */
+.chart-container canvas {
+    max-height: 700px;  
+}
+
+/* Estilo para la barra de desplazamiento de la sidebar (opcional) */
+#sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+#sidebar::-webkit-scrollbar-thumb {
+    background-color: #a855f7; /* Color púrpura más oscuro */
+    border-radius: 3px;
+}
+</style>
+</head>
+<body class="bg-gray-100 p-6">
+<div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-2xl flex gap-8">
+    
+    <div id="sidebar" class="bg-white p-4 border border-gray-200 rounded-lg shadow-lg">
+        <h2 class="text-xl font-extrabold mb-4 border-b pb-2 text-purple-700">Preparar Informe</h2>
+
+        <div id="headerFieldsContainer" class="mb-5 space-y-2 text-sm">
+            <div>
+                <label class="block font-semibold mb-0.5 text-xs text-gray-700">PARA:</label>
+                <input type="text" id="paraInput" value="MANUEL ANDRADE" class="w-full p-1 border border-gray-300 rounded-md text-xs focus:ring-purple-500 focus:border-purple-500 transition duration-150">
+            </div>
+            <div>
+                <label class="block font-semibold mb-0.5 text-xs text-gray-700">DE:</label>
+                <input type="text" id="deInput" value="COLABORADORES" class="w-full p-1 border border-gray-300 rounded-md text-xs focus:ring-purple-500 focus:border-purple-500 transition duration-150">
+            </div>
+            <div>
+                <label class="block font-semibold mb-0.5 text-xs text-gray-700">ASUNTO:</label>
+                <input type="text" id="asuntoInput" value="Informe DATOS" class="w-full p-1 border border-gray-300 rounded-md text-xs focus:ring-purple-500 focus:border-purple-500 transition duration-150">
+            </div>
+        </div>
+
+        <div class="mb-5">
+            <label class="block font-semibold mb-0.5 text-xs text-gray-700">TEXTO LIBRE (INICIAL):</label>
+            <textarea id="textoLibre" rows="3" class="w-full p-1 border border-gray-300 rounded-md text-xs focus:ring-purple-500 focus:border-purple-500 transition duration-150" placeholder="Escriba aquí su texto libre..."></textarea>
+            </div>
+
+        <h3 class="text-md font-bold mb-2 border-b pb-1 text-gray-700">Seleccionar Gráficos  </h3>
+        <div id="chart-menu" class="mb-6 space-y-1 text-xs max-h-48 overflow-y-auto border border-gray-300 p-2 rounded-md bg-gray-50">
+            <p class="text-gray-500 italic">Cargue el archivo para ver las opciones...</p>
+        </div>
+
+        <button id="exportWordBtn" class="w-full p-2 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition duration-150 shadow-md text-sm">
+            Exportar a Word
+        </button>
+    </div>
+
+    <div id="mainContent" class="flex-grow">
+        <h1 class="text-3xl font-extrabold mb-6 text-gray-800 border-b pb-2">📊 Informes</h1>
+        
+        <div class="mb-6 p-4 border border-blue-200 bg-blue-50 rounded-lg">
+            <label for="inputFile" class="block font-bold mb-2 text-blue-800">Cargar Archivo Excel (.xlsx):</label>
+            <input type="file" id="inputFile" accept=".xlsx" class="p-2 border border-blue-400 rounded-md w-full bg-white text-gray-700">
+            <div id="fileConfirm" class="mt-3 p-2 bg-green-100 text-green-700 font-semibold rounded hidden border border-green-300 text-sm">✔ Archivo recibido correctamente: </div>
+        </div>
+        
+        <div id="errorBox" class="mb-6 p-4 bg-red-100 text-red-800 border border-red-300 rounded hidden font-medium text-sm"></div>
+        
+        <div id="abasContainer">
+            <p id="initialPlaceholder" class="text-gray-500 italic mt-8 p-4 bg-gray-50 rounded-md border border-gray-200">Cargue un archivo .xlsx para empezar a visualizar los informes.</p>
+        </div>
+    </div>
+    
+</div>
+
+<div class="max-w-7xl mx-auto p-4 text-center text-sm text-gray-500 mt-6">Área Contratación y Movimientos SH © 2025</div>
+
+<script>
+/* VARIÁVEIS GLOBAIS PARA DADOS DA TABELA INDEPENDENTE */
+let globalCEOEASEDASTableData = null; 
+
+/* UTILIDADES */
+function parseFlexibleNumber(raw){
+    if(raw===undefined||raw===null) return null;
+    let s = raw.toString().trim();
+    // Remove thousands separator if it's a dot and there's a comma later, or remove all commas/dots if multiple
+    s = s.replace(/\u00A0/g,'').replace(/€/g,'').replace(/\s+/g,''); 
+    if(s==='') return null;
+    const hasDot = s.indexOf('.') !== -1;
+    const hasComma = s.indexOf(',') !== -1;
+    if(hasDot && hasComma){
+        if(s.lastIndexOf('.') < s.lastIndexOf(',')) s = s.replace(/\./g,'').replace(',', '.');
+        else s = s.replace(/,/g,'');
+    } else if(hasComma && !hasDot) s = s.replace(',', '.');
+    else { const dotCount = (s.match(/\./g)||[]).length; if(dotCount>1) s = s.replace(/\./g,''); } // Corrigido para remover todos os pontos se houver mais de um, exceto se for ponto decimal único (já tratado por cima)
+    
+    const n = Number(s);
+    return isNaN(n) ? null : n;
+}
+
+/**
+ * Formatea el valor para visualización, aplicando lógica de porcentaje y moneda.
+ */
+function formatValue(value, metaType, isTick = false){
+    if(value===null||value===undefined) return "";
+    let displayValue = value;
+    // Usamos 'en-US' para forzar el punto como separador decimal para que el usuario pueda copiar el valor.
+    const formatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }); 
+
+    if (metaType === 'percent') {
+        // Si el valor es 0.XX, multiplicamos por 100 (comportamiento Chart.js estándar)
+        if (value < 1 && value > 0 && isTick) {
+            displayValue = value * 100;
+        } 
+        
+        return formatter.format(displayValue) + ' %';
+    }
+    if(metaType === 'currency') return formatter.format(displayValue) + ' €';
+    // Para datos unitarios, usa formato de millar (sin decimales forzados a 2)
+    const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }); 
+    return numberFormatter.format(displayValue);
+}
+
+function base64ToArrayBuffer(base64){
+    const binaryString = atob(base64.split(",")[1]);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for(let i=0;i<len;i++) bytes[i] = binaryString.charCodeAt(i);
+    return bytes.buffer;
+}
+
+/* COLORES FIJOS */
+const COLOR_PASTEL_ORANGE = '#FFB366'; // Mercadona / España / ES
+const COLOR_PASTEL_BLUE   = '#ADD8E6'; // Nacional / Azul Pastel
+const COLOR_PASTEL_GREEN  = '#90EE90'; // PT / otros
+const COLOR_PASTEL_PURPLE = '#9370DB'; // Color Estándar
+
+function getSeriesColor(label){
+    const l = (label||'').toString().toLowerCase();
+    const nacionalKeywords = ['nacional', 'estado', 'general'];
+    const orangeKeywords = ['mercadona','es','espana','españa','esp','spain','espa'];
+    const ptKeywords = ['irmãdona', 'pt', 'portugal', 'port'];
+    
+    for(const k of nacionalKeywords) if(l.includes(k)) return COLOR_PASTEL_BLUE;
+    for(const k of orangeKeywords) if(l.includes(k)) return COLOR_PASTEL_ORANGE;
+    for(const k of ptKeywords) if(l.includes(k)) return COLOR_PASTEL_GREEN;
+    return COLOR_PASTEL_PURPLE; // Púrpura para otros
+}
+
+function rgbaFromHex(hex,alpha){
+    if(!hex) return hex;
+    const h = hex.replace('#','');
+    const bigint = parseInt(h,16);
+    const r = (bigint>>16) & 255;
+    const g = (bigint>>8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Mensajes de texto adicionales para la tabla CEOEASEDAS (Constante)
+const CEOEASEDAS_MESSAGES = {
+    "Paro": "Incremento en ES vs Altas Mdona",
+    "Contratos": "Contratos en ES vs Contratos Mdona",
+    "Indefinidos": "Fijos en ES vs Fijos en MDONA",
+    "Conversiones": "Conversiones",
+    "Temporales": "Temporales",
+    "Parciales": "Parciales",
+    "FD": "Total en ES vs Total en Mdona"
+};
+
+/* EXPORTAR A WORD */
+async function exportToWord(){
+    const errorBox=document.getElementById("errorBox"); errorBox.classList.add("hidden"); errorBox.innerText="";
+    if(!window.docx){ errorBox.innerText="Biblioteca docx no cargada correctamente."; errorBox.classList.remove("hidden"); return; }
+    
+    const {Document,Packer,Paragraph,TextRun,ImageRun,AlignmentType, Table, TableRow, TableCell, WidthType, Header}=window.docx;
+    
+    // Usa el menú lateral como fuente de verdad para qué gráficos incluir
+    const selectedChartIds = Array.from(document.querySelectorAll('#chart-menu input[type="checkbox"]:checked')).map(cb => cb.value);
+    if(!selectedChartIds.length){ errorBox.innerText="Seleccione al menos un gráfico para exportar."; errorBox.classList.remove("hidden"); return; }
+
+    try{
+        const children=[];
+        const today=new Date();
+        const options={day:'2-digit',month:'long',year:'numeric'};
+        const fechaStr=today.toLocaleDateString('es-ES',options);
+        const paraVal=document.getElementById("paraInput").value||"MANUEL ANDRADE";
+        const deVal=document.getElementById("deInput").value||"COLABORADORES";
+        const asuntoVal=document.getElementById("asuntoInput").value||"Informe DATOS";
+        const textoLibreVal=document.getElementById("textoLibre").value||"";
+
+        // --- DEFINICIÓN DINÁMICA DEL ENCABEZADO (HEADER) ---
+        const headerText1 = "DEPARTAMENTO TIENDAS Y RRHH";
+        const headerText2 = "COORD. GENERAL RRHH - BO / ma";
+        const dynamicFileName = `${asuntoVal.replace(/\s+/g, '_')}_${today.getFullYear()}_${today.getMonth()+1}.docx`; 
+        const now = new Date();
+        const headerDateStr = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); 
+
+        const wordHeader = new Header({
+            children: [
+                new Table({
+                    width: { size: 100, type: WidthType.PERCENTAGE },
+                    borders: { top: { style: "none" }, bottom: { style: "none" }, left: { style: "none" }, right: { style: "none" }, insideHorizontal: { style: "none" }, insideVertical: { style: "none" } },
+                    rows: [
+                        new TableRow({
+                            children: [
+                                // Celda Izquierda (Texto Fijo)
+                                new TableCell({
+                                    width: { size: 50, type: WidthType.PERCENTAGE },
+                                    children: [
+                                        new Paragraph({
+                                            children: [
+                                                new TextRun({text: headerText1, bold: true, size: 20, font: "Arial"}),
+                                            ],
+                                            alignment: AlignmentType.LEFT,
+                                            spacing: { after: 0 }
+                                        }),
+                                        new Paragraph({
+                                            children: [
+                                                new TextRun({text: headerText2, bold: true, size: 20, font: "Arial"}),
+                                            ],
+                                            alignment: AlignmentType.LEFT,
+                                            spacing: { after: 100 }
+                                        }),
+                                    ],
+                                }),
+                                // Celda Derecha (Información del Documento Dinámica)
+                                new TableCell({
+                                    width: { size: 50, type: WidthType.PERCENTAGE },
+                                    children: [
+                                        new Paragraph({
+                                            children: [
+                                                new TextRun({text: `“${dynamicFileName.replace(".docx", "")}”`, size: 18, font: "Arial"}), 
+                                            ],
+                                            alignment: AlignmentType.RIGHT,
+                                            spacing: { after: 0 }
+                                        }),
+                                        new Paragraph({
+                                            children: [
+                                                new TextRun({text: headerDateStr, size: 18, font: "Arial"}), 
+                                            ],
+                                            alignment: AlignmentType.RIGHT,
+                                            spacing: { after: 100 }
+                                        }),
+                                    ],
+                                }),
+                            ],
+                        }),
+                    ],
+                }),
+            ],
+        });
+
+        // --- CUERPO DEL DOCUMENTO (MEMO) ---
+        children.push(new Paragraph({children:[new TextRun({text:"__________________________________________________________________________________________"})],spacing:{after:200}}));
+        children.push(new Paragraph({children:[new TextRun({text:"PARA: ",font:"Arial",size:32}),new TextRun({text:"  "+paraVal,bold:true,font:"Arial",size:32})]}));
+        children.push(new Paragraph({children:[new TextRun({text:"DE: ",font:"Arial",size:32}),new TextRun({text:"       "+deVal,bold:true,font:"Arial",size:32})]}));
+        children.push(new Paragraph({children:[new TextRun({text:"ASUNTO: ",font:"Arial",size:32}),new TextRun({text:" "+asuntoVal,bold:true,font:"Arial",size:32})]}));
+        children.push(new Paragraph({children:[new TextRun({text:"FECHA:   ",font:"Arial",size:32}),new TextRun({text:fechaStr,bold:true,font:"Arial",size:32})]}));
+        children.push(new Paragraph({children:[new TextRun({text:"__________________________________________________________________________________________"})],spacing:{after:200}}));
+
+        // Agregar el Texto Libre INICIAL
+        if(textoLibreVal.trim()!==""){
+            children.push(new Paragraph({spacing:{before:200}}));
+            children.push(new Paragraph({children:[new TextRun({text:"COMENTARIOS INICIALES:",bold:true,font:"Arial",size:36})]}));
+            children.push(new Paragraph({children:[new TextRun({text:textoLibreVal,font:"Arial",size:32})]}));
+            children.push(new Paragraph({spacing:{after:400}}));
+        }
+
+        // --- INCLUIR GRÁFICOS SELECCIONADOS ---
+        for(let id of selectedChartIds){
+            const card = document.getElementById(id);
+            if(!card) continue;
+            
+            const titleEl=card.querySelector("h3"); 
+            const canvas=card.querySelector("canvas");
+            const commentEl = card.querySelector(".chart-comment");
+            const chartCommentVal = (commentEl ? commentEl.value : "") || "";
+
+            if(!canvas) continue;
+
+            // --- LÓGICA DE EXPORTACIÓN DE GRÁFICO ---
+            // 1. Título (Lógica mantenida para estandarización de títulos)
+            let titulo = titleEl.innerText;
+            // Estandariza el título
+            if(titulo.includes("Afiliación Comunidad: Porcentaje por Comunidad Autonoma")) titulo="Afiliación Comunidad: Porcentaje por CC.AA. - Datos actualizados";
+            else if(titulo.includes("Extranjeros: Comparativa ES vs PT")) titulo="Extranjeros: Comparativa España vs Portugal - Datos actualizados"; 
+            else if(titulo.includes("Afiliación: Evolución Porcentual")) titulo="Afiliación: Evolución Porcentual - Datos actualizados"; 
+            else if(titulo.includes("Afiliación Comunidad: Evolución de Porcentaje Nacional/Sistema")) titulo="Afiliación Comunidad: Evolución Nacional vs Mercadona - Datos actualizados";
+            else if(titulo.includes("Afiliación: Comparativa España/Portugal")) titulo="Afiliación Nacional: Comparativa España / Portugal - Datos actualizados";
+            else if(titulo.includes("IPC")) titulo="Evolución del IPC - Datos actualizados";
+            else if(titulo.includes("Paro")) titulo="Evolución del PARO - Datos actualizados";
+            else if(titulo.toLowerCase().includes("smi")||titulo.toLowerCase().includes("sueldo")) titulo="Evolución del SUELDO - Datos actualizados";
+            else if(titulo.toLowerCase().includes("trabajadores") || titulo.toLowerCase().includes("trabalhadores")) titulo="Evolución de Trabajadores Empresa - Datos actualizados";
+            else if(titulo.includes("Hoja:")) titulo = titulo.replace("Hoja:", "Gráfico:");
+            else if(titulo.includes("Afiliados comunidad datos unitarios")) titulo = "Afiliación Comunidad: Evolución Unitaria por CC.AA. - Datos actualizados";
+
+            children.push(new Paragraph({children:[new TextRun({text:titulo,bold:true,font:"Arial",size:32})]}));
+            children.push(new Paragraph(""));
+
+            // 2. Imagen del Gráfico
+            const imgData=canvas.toDataURL("image/png");
+            const imgBuffer=base64ToArrayBuffer(imgData);
+            children.push(new Paragraph({children:[new ImageRun({data:imgBuffer,transformation:{width:600,height:Math.round(600*(canvas.height/canvas.width))}})],alignment:AlignmentType.CENTER}));
+            children.push(new Paragraph(""));
+
+            // 3. Leyenda
+            const chart=Chart.getChart(canvas);
+            let legendText="";
+            if(chart && chart.data && chart.data.datasets){
+                legendText = chart.data.datasets.map(ds=>`• ${ds.label}`).join("\n");
+            }
+            children.push(new Paragraph({children:[new TextRun({text:legendText,italics:true,font:"Arial",size:32})]}));
+            children.push(new Paragraph(""));
+
+            // 4. Comentario del Gráfico
+            if(chartCommentVal.trim()!==""){
+                children.push(new Paragraph({children:[new TextRun({text:"Comentarios del Gráfico:",bold:true,font:"Arial",size:32})]}));
+                children.push(new Paragraph({children:[new TextRun({text:chartCommentVal,font:"Arial",size:32})]}));
+                children.push(new Paragraph({spacing:{after:200}}));
+            }
+
+            // 5. Tabla de Totales (Lógica original para CCAA porcentual)
+            const totalTableData = JSON.parse(card.dataset.totaldata || 'null');
+            const isCCAAChartPercent = id.includes("afiliacion_comunidad") && !id.includes("unitarios"); 
+
+            if(isCCAAChartPercent && totalTableData && totalTableData.length > 0 && totalTableData[0].data.length > 0){
+                const tableRows = [];
+                
+                // Header Row
+                const headerCells = [new TableCell({children:[new Paragraph({children:[new TextRun({text:"Periodo",bold:true,size:24})]})]})];
+                totalTableData[0].data.forEach(item => {
+                    headerCells.push(new TableCell({children:[new Paragraph({children:[new TextRun({text:item.label,bold:true,size:24})]})]}));
+                });
+                tableRows.push(new TableRow({children: headerCells, cantSplit: true}));
+
+                // Data Rows
+                totalTableData[0].labels.forEach((label, index) => {
+                    const dataCells = [new TableCell({children:[new Paragraph({children:[new TextRun({text:label,size:24})]})]})];
+                    totalTableData[0].data.forEach(colData => {
+                        const value = colData.data[index];
+                        const formattedValue = formatValue(value, colData.metaType || 'percent', true);
+                        dataCells.push(new TableCell({children:[new Paragraph({children:[new TextRun({text:formattedValue,size:24})]})]}));
+                    });
+                    tableRows.push(new TableRow({children: dataCells, cantSplit: true}));
+                });
+
+                children.push(new Paragraph({children:[new TextRun({text:"DATOS ADICIONALES (Totales/Porcentajes)",bold:true,font:"Arial",size:28})], spacing:{after:100}}));
+                children.push(new Table({
+                    rows: tableRows,
+                    width: {size: 100, type: WidthType.PERCENTAGE},
+                }));
+                children.push(new Paragraph({spacing:{after:400}}));
+            }
+
+
+            // NOVO: 6. Lógica de Tabela de Dados e Mensagens para CEOEASEDAS (usando a variável global)
+            const isCEOEASEDASChartSelected = selectedChartIds.some(id => id.includes("ceoeasedas_")); 
+            const tableRawData = globalCEOEASEDASTableData;
+            const tableMessages = CEOEASEDAS_MESSAGES; // Usar a constante
+
+            if(isCEOEASEDASChartSelected && tableRawData && tableRawData.length > 0){
+                const tableRows = [];
+                const tableHeaders = ["Tipo", "ES", "MDONA"]; // Hardcoded headers for simplicity
+
+                // Header Row
+                const headerCells = tableHeaders.map(h => new TableCell({children: [new Paragraph({children: [new TextRun({text: h, bold: true, size: 28, font: "Arial"})]})]}));
+                tableRows.push(new TableRow({children: headerCells, cantSplit: true}));
+
+                // Data Rows + Messages
+                tableRawData.forEach(item => {
+                    const rowText = item.Tipo || "N/A";
+                    const rowMessage = tableMessages[rowText] || ""; 
+                    
+                    // Data Row
+                    const dataCells = [
+                        new TableCell({children: [new Paragraph({children: [new TextRun({text: rowText, size: 24, font: "Arial"})]})]}),
+                        new TableCell({children: [new Paragraph({children: [new TextRun({text: formatValue(item.ES, 'number', true), size: 24, font: "Arial"})]})]}),
+                        new TableCell({children: [new Paragraph({children: [new TextRun({text: formatValue(item.MDONA, 'number', true), size: 24, font: "Arial"})]})]})
+                    ];
+                    tableRows.push(new TableRow({children: dataCells, cantSplit: true}));
+                    
+                    // Message Row (com espaçamento)
+                    if(rowMessage){
+                        tableRows.push(new TableRow({
+                            children: [
+                                new TableCell({
+                                    columnSpan: 3, 
+                                    children: [
+                                        new Paragraph({
+                                            children: [new TextRun({text: `> ${rowMessage}`, italics: true, size: 24, font: "Arial"})],
+                                            spacing: {before: 50, after: 50}
+                                        })
+                                    ]
+                                })
+                            ],
+                            cantSplit: true,
+                            // Remove borders for message row for better visual separation
+                            borders: { top: { style: "none" }, bottom: { style: "none" }, left: { style: "none" }, right: { style: "none" } } 
+                        }));
+                    }
+                });
+
+                children.push(new Paragraph({children:[new TextRun({text:"DATOS TABLA CEOE/ASEDAS (Totales Unidades)",bold:true,font:"Arial",size:32})], spacing:{after:100}}));
+                children.push(new Table({
+                    rows: tableRows,
+                    width: {size: 100, type: WidthType.PERCENTAGE},
+                }));
+                children.push(new Paragraph({spacing:{after:400}}));
+            }
+
+            // Espaciado final
+            children.push(new Paragraph({spacing:{after:400}})); 
+        }
+
+        children.push(new Paragraph({children:[new TextRun({text:"Siempre que se justifique los datos serán revisados y actualizados",italics:true,font:"Arial",size:28})]}));
+
+        const doc=new Document({
+            sections:[{
+                headers: { default: wordHeader }, 
+                children
+            }]
+        });
+        const blob=await Packer.toBlob(doc);
+        const link=document.createElement("a");
+        link.href=URL.createObjectURL(blob);
+        link.download=dynamicFileName; 
+        link.click();
+    } catch(err){
+        const errorBox=document.getElementById("errorBox");
+        errorBox.innerText="Error al generar Word: "+err.message;
+        errorBox.classList.remove("hidden");
+        console.error(err);
+    }
+}
+document.getElementById("exportWordBtn").addEventListener("click",exportToWord);
+
+/* LECTURA DEL FICHERO */
+document.getElementById("inputFile").addEventListener("change",function(evt){
+    // Oculta el placeholder inicial
+    const initialPlaceholder = document.getElementById("initialPlaceholder");
+    if (initialPlaceholder) initialPlaceholder.classList.add("hidden");
+
+    const file = evt.target.files[0];
+    if(!file) return;
+    const confirm = document.getElementById("fileConfirm");
+    confirm.innerText = "✔ Archivo recibido correctamente: " + file.name;
+    confirm.classList.remove("hidden");
+    const reader = new FileReader();
+    reader.onload = function(e){
+        const workbook = XLSX.read(e.target.result,{type:"binary"});
+        renderAbas(workbook);
+    };
+    reader.readAsBinaryString(file);
+});
+
+// NOVO: Función para alternar las pestañas
+function switchTab(tabId) {
+    // Oculta todos los contenidos
+    document.getElementById('informativosContent').classList.add('hidden');
+    document.getElementById('gestionContent').classList.add('hidden');
+    document.getElementById('tabelasGestaoContent').classList.add('hidden'); // NOVO
+    
+    // Desactiva todos los botones
+    document.getElementById('tab-informativos').classList.remove('border-purple-500', 'text-purple-600', 'border-b-2');
+    document.getElementById('tab-gestion').classList.remove('border-purple-500', 'text-purple-600', 'border-b-2');
+    document.getElementById('tab-tabelasGestao').classList.remove('border-purple-500', 'text-purple-600', 'border-b-2'); // NOVO
+    
+    // Muestra el contenido de la pestaña seleccionada
+    document.getElementById(tabId + 'Content').classList.remove('hidden');
+
+    // Activa el botón de la pestaña seleccionada
+    document.getElementById('tab-' + tabId).classList.add('border-purple-500', 'text-purple-600', 'border-b-2');
+}
+
+// NOVO: Función para renderizar la tabla de datos CEOEASEDAS en HTML
+function renderCEOEASEDASTable(tableContainerId, data, messages) {
+    const targetDiv = document.getElementById(tableContainerId);
+    if (!targetDiv) return;
+
+    // Remove placeholder message
+    const placeholder = targetDiv.querySelector('p.italic');
+    if (placeholder) placeholder.classList.add('hidden');
+
+    // Create main table wrapper
+    let wrapper = document.createElement('div');
+    wrapper.className = "p-6 rounded-lg border border-gray-200 mb-8 bg-white shadow-xl";
+    wrapper.id = "table_ceoeasedas_main";
+    wrapper.innerHTML = ''; // Limpia el contenido anterior
+
+    if (!data || data.length === 0) {
+        wrapper.innerHTML = '<p class="text-gray-500 italic">Nenhum dado encontrado para a tabela CEOEASEDAS.</p>';
+        targetDiv.appendChild(wrapper);
+        return;
+    }
+
+    let html = '<h4 class="font-bold mb-3 text-purple-800 text-xl border-b pb-2">📋 Tabela de Dados CEOE/ASEDAS (ES vs MDONA)</h4>';
+    html += '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-purple-200 border border-purple-300 rounded-lg">';
+    html += '<thead class="bg-purple-100"><tr><th class="px-4 py-2 text-left text-xs font-bold text-purple-700 uppercase tracking-wider">Tipo</th>';
+    html += `<th class="px-4 py-2 text-left text-xs font-bold text-purple-700 uppercase tracking-wider">ES (Espanha)</th>`;
+    html += `<th class="px-4 py-2 text-left text-xs font-bold text-purple-700 uppercase tracking-wider">MDONA (Mercadona)</th>`;
+    html += '</tr></thead><tbody class="bg-white divide-y divide-purple-200">';
+    
+    data.forEach(item => {
+        const tipo = item.Tipo || "N/A";
+        const msg = messages[tipo] || "";
+        
+        html += '<tr>';
+        html += `<td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${tipo}</td>`;
+        html += `<td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${formatValue(item.ES, 'number', true)}</td>`;
+        html += `<td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${formatValue(item.MDONA, 'number', true)}</td>`;
+        html += '</tr>';
+        
+        if (msg) {
+            html += `<tr><td colspan="3" class="px-4 py-1 text-xs italic text-blue-600 bg-blue-50 border-t border-blue-200"> > ${msg}</td></tr>`;
+        }
+    });
+
+    html += '</tbody></table></div>';
+    
+    wrapper.innerHTML += html;
+    targetDiv.appendChild(wrapper);
+}
+
+
+/**
+ * Crea e inserta el componente de gráfico en el DOM.
+ */
+function createChartComponent(targetTabId, title, id, labels, datasets, needsCountryFilter = false, initialCountry = 'BOTH', totalDatasets = []){
+    const parentElement = document.getElementById(targetTabId);
+    if (!parentElement) return;
+
+    const chartContainer = document.createElement("div");
+    chartContainer.className = "chart-container p-6 rounded-lg border border-gray-200 mb-8 bg-white shadow-xl";
+    chartContainer.id = id; 
+    
+    // Guarda los datos de la tabla para la exportación a Word (solo CCAA)
+    const isCCAAChartPercent = id === 'afiliacion_comunidad';
+    if(isCCAAChartPercent && totalDatasets.length > 0) {
+        chartContainer.dataset.totaldata = JSON.stringify([{labels, data: totalDatasets}]);
+    } else {
+        chartContainer.dataset.totaldata = '';
+    }
+    
+    // NO se usa tableRawData o tableMessages aquí, la tabla CEOEASEDAS es independiente.
+
+    const chartTitle = document.createElement("h3");
+    chartTitle.className = "text-xl font-bold mb-4 border-b pb-2 text-gray-800";
+    chartTitle.innerText = title;
+    chartContainer.appendChild(chartTitle);
+
+    // AÑADE EL CHECKBOX EN EL MENÚ LATERAL
+    const chartMenu = document.getElementById('chart-menu');
+    if(chartMenu.querySelector('p.italic') && chartMenu.querySelectorAll('.include-chart-checkbox').length === 0) chartMenu.innerHTML = '';
+    const menuLabel = document.createElement('label');
+    menuLabel.className = 'flex items-center text-xs text-gray-700 cursor-pointer hover:bg-gray-100 p-1 rounded transition duration-100';
+    menuLabel.innerHTML = `
+        <input type="checkbox" id="check-${id}" value="${id}" class="include-chart-checkbox mr-2 h-3 w-3 text-purple-600 border-gray-300 rounded focus:ring-purple-500" checked>
+        ${title.length > 40 ? title.substring(0, 37) + '...' : title}
+    `;
+    chartMenu.appendChild(menuLabel);
+
+    const controlsDiv = document.createElement("div");
+    controlsDiv.className = "flex items-center mb-5 flex-wrap gap-4";
+    chartContainer.appendChild(controlsDiv);
+
+    // Selector de país/región
+    let countrySelect = null;
+
+    if(needsCountryFilter){
+        countrySelect = document.createElement("select");
+        countrySelect.className = "p-2 border border-gray-300 rounded-md text-sm bg-white shadow-sm focus:ring-blue-500 focus:border-blue-500";
+        countrySelect.innerHTML = `<option value="BOTH">🌍 Ambos</option><option value="ES">🇪🇸 España</option><option value="PT">🇵🇹 Portugal</option>`;
+        countrySelect.value = initialCountry;
+        controlsDiv.appendChild(countrySelect);
+    }
+
+
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "p-2 border border-gray-300 rounded-md text-sm bg-white shadow-sm focus:ring-blue-500 focus:border-blue-500";
+    typeSelect.innerHTML = `<option value="line">Líneas</option><option value="bar">Barras</option>`; 
+    controlsDiv.appendChild(typeSelect);
+
+    const downloadBtn = document.createElement("button");
+    downloadBtn.className = "p-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 text-sm transition duration-150 shadow-sm";
+    downloadBtn.innerText = "Descargar PNG";
+    controlsDiv.appendChild(downloadBtn);
+    
+    const canvas = document.createElement("canvas");
+    canvas.id = "canvas_"+id;
+    canvas.className = "mt-4";
+    chartContainer.appendChild(canvas);
+    
+    // Tabla de Totales (Solo en el gráfico de CC.AA. porcentual original)
+    const totalTableDiv = document.createElement("div");
+    totalTableDiv.className = "mt-6 p-4 border-t-2 border-purple-200 bg-purple-50 rounded-b-lg";
+    if(isCCAAChartPercent && totalDatasets.length > 0) {
+        chartContainer.appendChild(totalTableDiv);
+    }
+
+    // NOTA: La tabla CEOEASEDAS ya no se adjunta aquí.
+
+    // Caja de Texto Libre por Gráfico
+    const commentDiv = document.createElement("div");
+    commentDiv.className = "mt-6 p-4 border border-gray-300 bg-gray-50 rounded-lg";
+    commentDiv.innerHTML = `
+        <label for="comment-${id}" class="block font-semibold mb-2 text-sm text-gray-700">Comentario específico para este Gráfico:</label>
+        <textarea id="comment-${id}" rows="3" class="chart-comment w-full p-2 border border-gray-400 rounded-md text-sm focus:ring-purple-500 focus:border-purple-500 transition duration-150" placeholder="Escriba aquí sus conclusiones o análisis sobre este gráfico..."></textarea>
+    `;
+    chartContainer.appendChild(commentDiv);
+    
+    parentElement.appendChild(chartContainer);
+
+    let chart = null;
+
+    function renderTotalTable(labels, totalDatasets) {
+        const datasets = totalDatasets;
+        if(datasets.length === 0) {
+            totalTableDiv.innerHTML = '';
+            return;
+        }
+
+        let html = '<h4 class="font-bold mb-3 text-purple-800 text-lg">Totales de Afiliación (Nacional/Mercadona/Sistema)</h4>';
+        html += '<div class="overflow-x-auto"><table class="min-w-full divide-y divide-purple-200 border border-purple-300 rounded-lg">';
+        html += '<thead class="bg-purple-100"><tr><th class="px-4 py-2 text-left text-xs font-bold text-purple-700 uppercase tracking-wider">Periodo</th>';
+        datasets.forEach(ds => {
+            html += `<th class="px-4 py-2 text-left text-xs font-bold text-purple-700 uppercase tracking-wider">${ds.label}</th>`;
+        });
+        html += '</tr></thead><tbody class="bg-white divide-y divide-purple-200">';
+        
+        labels.forEach((label, rowIndex) => {
+            html += '<tr>';
+            html += `<td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">${label}</td>`;
+            datasets.forEach(ds => {
+                const value = ds.data[rowIndex];
+                const formattedValue = formatValue(value, ds.metaType || 'percent', true);
+                html += `<td class="px-4 py-2 whitespace-nowrap text-sm text-gray-700">${formattedValue}</td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table></div>';
+        totalTableDiv.innerHTML = html;
+    }
+
+
+    function drawChart(){
+        if(chart) chart.destroy();
+        let datasetsToShow = [];
+        let selectedCountry = 'BOTH';
+
+        if(countrySelect){
+            selectedCountry = countrySelect.value;
+        }
+
+        // Lógica de filtrado de país/serie para el selector (Solo usado para Afiliacion y Extranjeros)
+        if(needsCountryFilter && selectedCountry !== 'BOTH'){
+            datasetsToShow = datasets.filter(d => {
+                const l = (d.label || '').toString().toLowerCase();
+                if(selectedCountry === 'ES'){
+                    // Filtro ES: Incluye Nacional/Mercadona/ES, excluye PT/Irmãdona
+                    return (l.includes('es') || l.includes('espana') || l.includes('españa') || l.includes('mercadona') || l.includes('nacional') || l.includes('estado')) && !(l.includes('pt') || l.includes('irm'));
+                } else if(selectedCountry === 'PT'){
+                    // Filtro PT: Incluye Irmãdona/PT
+                    return l.includes('irm') || l.includes('pt') || l.includes('port');
+                }
+                return true;
+            });
+        } else { // 'BOTH' o sin filtro de país
+            datasetsToShow = datasets.slice();
+        }
+
+        // Renderizar la Tabla de Totales (Solo en el componente de CC.AA. porcentual)
+        if(isCCAAChartPercent && totalDatasets.length > 0) renderTotalTable(labels, totalDatasets);
+        
+        // Ajuste de colores para barras
+        const finalDatasets = datasetsToShow.map(ds => {
+            const isBar = typeSelect.value === 'bar';
+            return {
+                ...ds,
+                backgroundColor: isBar ? rgbaFromHex(ds.borderColor, 0.7) : 'transparent',
+                borderColor: ds.borderColor,
+                pointBackgroundColor: ds.borderColor,
+                pointBorderColor: '#fff',
+                borderWidth: 2,
+                fill: false
+            };
+        });
+
+
+        chart = new Chart(canvas.getContext("2d"), {
+            type: typeSelect.value,
+            data: { labels, datasets: finalDatasets },
+            plugins: [ChartDataLabels],
+            options: {
+                responsive: true,
+                maintainAspectRatio: true, 
+                // AJUSTE PARA VISIBILIDAD: Agrega padding en el tope
+                layout: {
+                    padding: {
+                        top: 30 
+                    }
+                },
+                plugins: {
+                    legend: { 
+                        position: "bottom" 
+                    },
+                    datalabels: {
+                        anchor: "end",
+                        align: "top",
+                        offset: 8,
+                        formatter: function(value, ctx){
+                            const ds = ctx.dataset || {};
+                            return formatValue(value, ds.metaType || 'number', false);
+                        },
+                        font: { size: 10, weight: "bold" }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(val){
+                                if(chart && chart.data && chart.data.datasets && chart.data.datasets.length){
+                                    const first = chart.data.datasets.find(ds => ds.metaType); 
+                                    return formatValue(val, (first ? first.metaType : 'number') || 'number', true);
+                                }
+                                return val;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    typeSelect.addEventListener("change", drawChart);
+    if(countrySelect) countrySelect.addEventListener("change", drawChart);
+    
+    downloadBtn.addEventListener("click", ()=>{ const link=document.createElement("a"); link.href=canvas.toDataURL("image/png"); link.download=title.replace(/\s/g, '_')+".png"; link.click(); });
+
+    drawChart();
+    return chartContainer;
+}
+
+// NOVO: Función para generar la estructura de pestañas
+function generateTabsStructure(container) {
+    container.innerHTML = `
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                <button id="tab-informativos" onclick="switchTab('informativos')" 
+                    class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 
+                    whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg transition duration-150">
+                    📈 Gráficos Informativos
+                </button>
+                <button id="tab-gestion" onclick="switchTab('gestion')" 
+                    class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 
+                    whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg transition duration-150">
+                    📊 Gráficos de Gestión
+                </button>
+                <button id="tab-tabelasGestao" onclick="switchTab('tabelasGestao')" 
+                    class="tab-button border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 
+                    whitespace-nowrap py-3 px-1 border-b-2 font-medium text-lg transition duration-150">
+                    📋 Tabelas de Gestão
+                </button>
+            </nav>
+        </div>
+
+        <div id="informativosContent" class="mt-8">
+            <p class="text-gray-500 italic p-2 border-l-4 border-purple-500 bg-purple-50 rounded-r-md">Aqui se mostrarán los gráficos de IPC, Paro, SMI y Sueldo.</p>
+        </div>
+        <div id="gestionContent" class="mt-8 hidden">
+            <p class="text-gray-500 italic p-2 border-l-4 border-green-500 bg-green-50 rounded-r-md">Aquí se mostrarán los gráficos de Afiliación (todos), Trabajadores, Extranjeros, CEOE/ASEDAS y otros datos de Gestión.</p>
+        </div>
+        <div id="tabelasGestaoContent" class="mt-8 hidden">
+             <p class="text-gray-500 italic p-2 border-l-4 border-blue-500 bg-blue-50 rounded-r-md">Aqui serão exibidas as tabelas de dados brutos, como CEOE/ASEDAS.</p>
+        </div>
+    `;
+    // Activa la primera pestaña por defecto
+    switchTab('informativos');
+}
+
+/* RENDER ABAS */
+function renderAbas(workbook){
+    const container = document.getElementById("abasContainer");
+    generateTabsStructure(container); // Crea la estructura de pestañas
+
+    // Reset global data
+    globalCEOEASEDASTableData = null;
+
+    // Limpia el menú lateral de gráficos
+    const chartMenu = document.getElementById('chart-menu');
+    chartMenu.innerHTML = '<p class="text-gray-500 italic">Cargando gráficos...</p>';
+
+    const sheetNames = workbook.SheetNames.slice();
+
+    const normalize = s => (s===undefined||s===null) ? "" : s.toString().trim().toLowerCase();
+    const isYearLike = token => {
+        if(!token) return false;
+        token = token.toString().trim();
+        if(/^[12]\d{3}$/.test(token)) return true;
+        if(/^\d{2}[-\/]\d{2}$/.test(token)) return true;
+        return false;
+    };
+    const detectUnitFromHeaderOrValues = (headers, rows) => {
+        const headerText = headers.join(" ").toLowerCase();
+        if(headerText.indexOf('%')!==-1 || headerText.includes('por') || headerText.includes('porcentaje') || headerText.includes('percent') || headerText.includes('ipc')) return 'percent'; 
+        if(headerText.indexOf('€')!==-1 || headerText.includes('eur') || headerText.includes('euro') || headerText.includes('smi') || headerText.includes('sueldo')) return 'currency';
+        for(let r of rows){
+            for(let c of r){
+                if(c===undefined||c===null) continue;
+                const s = c.toString();
+                if(s.indexOf('%')!==-1) return 'percent';
+                if(s.indexOf('€')!==-1 || s.toLowerCase().indexOf('eur')!==-1) return 'currency';
+            }
+        }
+        return 'number';
+    };
+    
+    let chartCounter = 0;
+    
+    // NOVO: Lógica para extrair dados da CEOEASEDAStabla (para a nova aba)
+    if (sheetNames.map(normalize).includes('ceoeasedastabla')) {
+        const sheet = workbook.Sheets['CEOEASEDAStabla'];
+        // Assume Tipos/ES/MDONA a partir da 2ª linha (range:1)
+        const data = XLSX.utils.sheet_to_json(sheet, { header: ["Tipo", "ES", "MDONA"], range: 1, raw: false }); 
+        if (data && data.length > 0) {
+            globalCEOEASEDASTableData = data.map(row => ({
+                Tipo: row.Tipo ? row.Tipo.toString().trim() : null,
+                ES: parseFlexibleNumber(row.ES),
+                MDONA: parseFlexibleNumber(row.MDONA)
+            })).filter(item => item.Tipo && item.ES !== null && item.MDONA !== null);
+            
+            // Renderiza a tabela diretamente na nova aba
+            renderCEOEASEDASTable('tabelasGestaoContent', globalCEOEASEDASTableData, CEOEASEDAS_MESSAGES);
+        }
+    }
+
+
+    sheetNames.forEach((sheetName)=>{
+        const sheetNorm = normalize(sheetName);
+        
+        // NOVO: Ignora a folha de dados brutos da tabela para que não crie um gráfico
+        if (sheetNorm.includes('ceoeasedastabla')) return;
+
+        const sheet = workbook.Sheets[sheetName];
+        let data = XLSX.utils.sheet_to_json(sheet,{header:1,raw:false}); 
+        if(!data || data.length < 1) return;
+
+        // Limpieza de filas y encabezados vacíos
+        if(data.length>1 && data[0].length===1 && (data[0][0]||"").toString().trim().toLowerCase()==="smi") data.shift();
+        if(data[0] && data[0][0] == "2025") data.shift();
+        while(data.length && data[0].every(c => c===undefined || c===null || c.toString().trim()==="")) data.shift();
+        if(data.length < 2) return;
+
+        let headers = (data[0]||[]).map(h => h===undefined||h===null ? "" : h.toString().trim());
+        let rows = data.slice(1).filter(r => !(r.every(c => c===undefined || c===null || c.toString().trim()==="")));
+        if(rows.length===0) return;
+
+        // Detección de Label Index y Transposición (Lógica mantenida)
+        let labelIndex = -1;
+        for(let i=0;i<headers.length;i++){
+            const h = headers[i].toString().toLowerCase();
+            if(h.includes('año')||h.includes('ano')||h.includes('year')||h.includes('mes')||h.includes('month')||h.includes('periodo')){ labelIndex=i; break; }
+            if(isYearLike(h) || h.match(/^(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)/i)) { labelIndex=i; break; }
+        }
+        if(labelIndex === -1){
+            const firstColSample = rows.slice(0,6).map(r=>r[0]).filter(x=>x!==undefined && x!==null && x.toString().trim()!=="");
+            const firstIsYearLike = firstColSample.length>0 && firstColSample.every(v=> isYearLike(v.toString().trim()) || !isNaN(parseFlexibleNumber(v)));
+            if(firstIsYearLike) labelIndex = 0;
+        }
+        if(labelIndex === -1) labelIndex = 0;
+
+        const headerMostlyYears = headers.every(h => isYearLike(h));
+        const firstColLookLikeTextSeries = rows.map(r=>r[0]).slice(0,6).every(x => x!==undefined && x!==null && isNaN(parseFlexibleNumber(x)));
+        let shouldTranspose = false;
+        if(headerMostlyYears && firstColLookLikeTextSeries) shouldTranspose = true;
+        if(shouldTranspose){
+            const matrix = [headers].concat(rows);
+            const transposed = matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex] || ""));
+            headers = transposed[0].map(h => h===undefined||h===null ? "" : h.toString().trim());
+            rows = transposed.slice(1).map(r => r.map(c => c===undefined||c===null ? "" : c));
+            labelIndex = 0;
+        }
+
+        
+        // --- 1. DETECCIÓN DE TIPOS DE HOJAS ---
+        const sheetIsIPC = sheetNorm.includes('ipc'); 
+        const sheetIsParo = sheetNorm.includes('paro'); 
+        const sheetIsSueldoOrSMI = sheetNorm.includes('sueldo') || sheetNorm.includes('smi'); 
+        
+        // Todos los otros tipos (Gestión)
+        const sheetIsTrabalhadores = sheetNorm.includes('trabalh') || sheetNorm.includes('trabajador');
+        const sheetIsExtranjeros = sheetNorm.includes('extranjer'); 
+        const sheetIsAfiliadosComunidadUnitarios = sheetNorm.includes('afiliados comunidad datos unitarios');
+        const sheetIsAfiliadosPorcentage = sheetNorm.includes('afiliados porcentage') || sheetNorm.includes('afiliación comunidad: porcentaje');
+        const sheetIsCEOEASEDAS = sheetNorm.includes("ceoeasedas") && !sheetNorm.includes("tabla");
+
+        // Captura afiliación restante (general)
+        const sheetIsAfiliacionGeral = sheetNorm.includes('afili') && !sheetIsAfiliadosPorcentage && !sheetIsAfiliadosComunidadUnitarios;
+        
+        // --- 2. LÓGICA DE ASIGNACIÓN DE PESTAÑA (CORRECCIÓN APLICADA) ---
+        const sheetIsCoreInformativo = sheetIsIPC || sheetIsParo || sheetIsSueldoOrSMI;
+
+        let targetTabId = 'gestionContent'; // Estándar: Gestión 
+
+        // Clasificación para "Gráficos Informativos": SOLO IPC, PARO, SMI/SUELDO
+        if(sheetIsCoreInformativo) { 
+            targetTabId = 'informativosContent';
+        }
+
+
+        const detectedUnit = detectUnitFromHeaderOrValues(headers, rows);
+        const labels = rows.map(r => { const v = r[labelIndex]; return (v===undefined||v===null) ? "" : v.toString().trim(); });
+
+
+        function detectSeriesTypeByHeaderOrSheet(headerName, sheetName, detectedUnit){
+            const h = (headerName||"").toString().toLowerCase();
+            const s = (sheetName||"").toString().toLowerCase();
+            
+            // Tipos de datos unitarios/moneda (para SMI/SUELDO y Trabajadores/Unitarios)
+            if(sheetIsTrabalhadores || sheetIsAfiliadosComunidadUnitarios || sheetIsParo) return 'number'; 
+            if(sheetIsSueldoOrSMI || detectedUnit==='currency') return 'currency';
+            
+            // Tipos de datos porcentuales
+            if(sheetIsExtranjeros || sheetIsAfiliadosPorcentage || sheetIsIPC) return 'percent';
+            
+            if(h.includes('%')||h.includes('por')||h.includes('porcentaje')||h.includes('percent')) return 'percent';
+            
+            return detectedUnit || 'number';
+        }
+
+        const allDatasets = []; 
+        const totalDatasets = []; 
+
+        for(let col = labelIndex+1; col < headers.length; col++){
+            const headerName = headers[col] || ('col'+col);
+            const rawData = rows.map(r => parseFlexibleNumber(r[col]));
+            const metaType = detectSeriesTypeByHeaderOrSheet(headerName, sheetName, detectedUnit);
+            
+            const headerNorm = normalize(headerName);
+            const isTotalColumn = (headerNorm.includes('nacional') || headerNorm.includes('sistema') || headerNorm.includes('mercadona') || headerNorm.includes('irmãdona')) && rawData.some(v => v !== null && v > 10);
+            
+            // Solo guarda totales para la hoja Afiliación Comunidad (porcentual original)
+            if(sheetName.toLowerCase().includes('afiliación comunidad: porcentaje') && isTotalColumn) {
+                totalDatasets.push({ label: headerName, data: rawData, metaType: metaType });
+            }
+
+            allDatasets.push({
+                label: headerName,
+                data: rawData,
+                borderColor: getSeriesColor(headerName),
+                metaType: metaType
+            });
+        }
+        
+        if(allDatasets.length === 0) return;
+
+        // --- LÓGICA DE GENERACIÓN DE GRÁFICOS ESPECIALES (TODOS EN GESTIÓN) ---
+        
+        if(sheetIsExtranjeros){
+            // TargetTabId: 'gestionContent'
+            const dataEsPt = allDatasets.filter(ds => 
+                (ds.label.toLowerCase().includes('es') || ds.label.toLowerCase().includes('españa') || ds.label.toLowerCase().includes('portugal') || ds.label.toLowerCase().includes('pt')) && 
+                !ds.label.toLowerCase().includes('mercadona') && 
+                !ds.label.toLowerCase().includes('irmãdona') 
+            );
+
+            if(dataEsPt.length > 0){
+                chartCounter++;
+                createChartComponent('gestionContent', `Extranjeros: Comparativa ES vs PT - Hoja: ${sheetName}`, `extranjeros_es_pt_${chartCounter}`, labels, dataEsPt, false, 'BOTH');
+            }
+            return;
+        }
+
+        if(sheetIsAfiliadosComunidadUnitarios){
+            // TargetTabId: 'gestionContent'
+            chartCounter++;
+            createChartComponent('gestionContent', `Afiliación Comunidad: Evolución Unitaria por CC.AA. - Hoja: ${sheetName}`, `afiliados_comunidad_unitarios_${chartCounter}`, labels, allDatasets, true, 'ES');
+            return;
+        }
+
+        if(sheetIsAfiliadosPorcentage){
+            // TargetTabId: 'gestionContent'
+            chartCounter++;
+            createChartComponent('gestionContent', `Afiliación: Evolución Porcentual - Hoja: ${sheetName}`, `afiliados_porcentage_${chartCounter}`, labels, allDatasets, true, 'BOTH');
+            return;
+        }
+
+        if (sheetIsCEOEASEDAS) {
+            // TargetTabId: 'gestionContent'
+            const tiposIndex = headers.findIndex(h => normalize(h) === 'tipos');
+            const porcentageIndex = headers.findIndex(h => normalize(h) === 'porcentage');
+
+            if (tiposIndex !== -1 && porcentageIndex !== -1) {
+                const ceLabels = rows.map(r => r[tiposIndex] ? r[tiposIndex].toString().trim() : "");
+                const rawValues = rows.map(r => parseFlexibleNumber(r[porcentageIndex]));
+
+                const ceDataset = [{
+                    label: 'Porcentage',
+                    data: rawValues,
+                    borderColor: '#9370DB',
+                    metaType: 'percent'
+                }];
+
+                chartCounter++;
+                
+                // O gráfico é criado, mas a tabela não é anexada aqui, pois é independente.
+                createChartComponent(
+                    'gestionContent', 
+                    `CEOE/ASEDAS: Tipos vs Porcentage - Hoja: ${sheetName}`,
+                    `ceoeasedas_${chartCounter}`,
+                    ceLabels,
+                    ceDataset,
+                    false,
+                    'BOTH',
+                    []
+                );
+
+                return;
+            }
+        }
+
+
+        // LÓGICA DE GRÁFICOS ESTÁNDAR (Aplica a IPC, PARO, SMI, SUELDO y Afiliacion General/Trabajadores/Otros)
+
+        // Si la hoja contiene "afiliación comunidad: porcentaje", usa el ID estándar para vincular la tabla de totales
+        const id = sheetName.toLowerCase().includes('afiliación comunidad: porcentaje') ? `afiliacion_comunidad` : `chart_${chartCounter++}`;
+        const title = `Hoja: ${sheetName}`;
+        
+        // Aplica el filtro de país solo a gráficos que tratan de datos nacionales/país (IPC, Paro, Afiliacion General)
+        const needsCountryFilter = sheetIsAfiliacionGeral || sheetIsIPC || sheetIsParo; 
+
+        // El targetTabId es determinado estrictamente al principio 
+        createChartComponent(targetTabId, title, id, labels, allDatasets, needsCountryFilter, 'BOTH', totalDatasets);
+
+
+    });
+    // Garantiza que el menú se actualice incluso si no hay gráficos
+    if(chartMenu.innerHTML.includes('Cargando gráficos...')) {
+        chartMenu.innerHTML = '<p class="text-gray-500 italic">No se pudieron generar gráficos.</p>';
+    }
+    
+    // Elimina los mensajes de placeholder de las pestañas si hay gráficos
+    ['informativosContent', 'gestionContent', 'tabelasGestaoContent'].forEach(id => {
+        const contentDiv = document.getElementById(id);
+        const placeholders = contentDiv.querySelectorAll('p.italic');
+        if (contentDiv.querySelector('.chart-container') || (id === 'tabelasGestaoContent' && contentDiv.querySelector('#table_ceoeasedas_main'))) {
+            placeholders.forEach(p => p.classList.add('hidden'));
+        } else {
+             // Si no hay gráficos/tabelas, garantiza que el placeholder estándar de la pestaña aparezca
+             placeholders.forEach(p => p.classList.remove('hidden'));
+        }
+    });
+}
+</script>
+</body>
+</html>
